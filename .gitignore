@@ -1,0 +1,33 @@
+# PlatformIO
+firmware/.pio/
+firmware/.vscode/.browse.c_cpp.db*
+firmware/.vscode/c_cpp_properties.json
+firmware/.vscode/launch.json
+firmware/.vscode/ipch
+
+# Flutter / Dart
+mobile_app/.dart_tool/
+mobile_app/.packages
+mobile_app/.flutter-plugins
+mobile_app/.flutter-plugins-dependencies
+mobile_app/build/
+mobile_app/.pub-cache/
+mobile_app/.pub/
+mobile_app/coverage/
+mobile_app/ios/
+mobile_app/lib/core/constants/api_constants.dart
+mobile_app/lib/features/developer_mode/dev_hud_widget.dart
+mobile_app/test/curl_builder_test.dart
+# IDE
+.idea/
+*.iml
+.vscode/*.log
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Secrets (nunca commitear claves reales)
+**/secrets.json
+**/.env
+mobile_app.zip
