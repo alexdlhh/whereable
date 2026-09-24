@@ -18,3 +18,5 @@ Al boot:
 6. Beep de arranque
 
 Ver `docs/API_FIRMWARE.md` y el pinout en `src/config.h`.
+
+📟 **Guía de instalación paso a paso para compañeros**: [`docs/INSTALACION_FIRMWARE.md`](../docs/INSTALACION_FIRMWARE.md)
