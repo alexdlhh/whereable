@@ -1,9 +1,17 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../utils/wav_encoder.dart';
+
+/// Instancia única de reproducción en el teléfono (compartida por TTS y barge-in).
+final phonePlaybackProvider = Provider<PhonePlayback>((ref) {
+  final p = PhonePlayback();
+  ref.onDispose(() => p.dispose());
+  return p;
+});
 
 /// Reproduce PCM en el altavoz del teléfono con soporte para pantalla bloqueada.
 /// Configura el AudioContext global con stayAwake y categoría Playback (similar a apps de música).

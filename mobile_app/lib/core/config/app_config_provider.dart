@@ -20,6 +20,15 @@ class AppConfigState {
   final int cameraContrast;
   final String workOrderId;
 
+  /// V57: backend de IA. 'auto' detecta por URL (Gemini nativo vs OpenAI-compat).
+  /// 'cerebras' fuerza el endpoint OpenAI-compat de Cerebras (qwen-3.8-27b) con
+  /// reasoning desactivado, igual que el ejemplo que funciona.
+  final String backend;
+  /// V57: API key de Tavily para la búsqueda web (visión → consulta web → reintento).
+  final String tavilyApiKey;
+  /// V57: interruptor global de la búsqueda web.
+  final bool enableWebSearch;
+
   AppConfigState({
     this.apiBaseUrl = ApiConstants.defaultAiBaseUrl,
     this.apiKey = ApiConstants.defaultApiKey,
@@ -35,6 +44,9 @@ class AppConfigState {
     this.cameraBrightness = 1,
     this.cameraContrast = 1,
     this.workOrderId = '',
+    this.backend = 'auto',
+    this.tavilyApiKey = '',
+    this.enableWebSearch = true,
   });
 
   AppConfigState copyWith({
@@ -52,6 +64,9 @@ class AppConfigState {
     int? cameraBrightness,
     int? cameraContrast,
     String? workOrderId,
+    String? backend,
+    String? tavilyApiKey,
+    bool? enableWebSearch,
   }) {
     return AppConfigState(
       apiBaseUrl: apiBaseUrl ?? this.apiBaseUrl,
@@ -68,6 +83,9 @@ class AppConfigState {
       cameraBrightness: cameraBrightness ?? this.cameraBrightness,
       cameraContrast: cameraContrast ?? this.cameraContrast,
       workOrderId: workOrderId ?? this.workOrderId,
+      backend: backend ?? this.backend,
+      tavilyApiKey: tavilyApiKey ?? this.tavilyApiKey,
+      enableWebSearch: enableWebSearch ?? this.enableWebSearch,
     );
   }
 }
@@ -87,6 +105,9 @@ class AppConfigNotifier extends StateNotifier<AppConfigState> {
   static const _kTtsRate = 'cfg_tts_rate';
   static const _kTtsPitch = 'cfg_tts_pitch';
   static const _kTtsVol = 'cfg_tts_vol';
+  static const _kBackend = 'cfg_backend';
+  static const _kTavily = 'cfg_tavily_key';
+  static const _kWebSearch = 'cfg_web_search';
 
   Future<void> _load() async {
     final p = await SharedPreferences.getInstance();
@@ -101,6 +122,9 @@ class AppConfigNotifier extends StateNotifier<AppConfigState> {
       ttsRate: p.getDouble(_kTtsRate) ?? state.ttsRate,
       ttsPitch: p.getDouble(_kTtsPitch) ?? state.ttsPitch,
       ttsVolume: p.getDouble(_kTtsVol) ?? state.ttsVolume,
+      backend: p.getString(_kBackend) ?? state.backend,
+      tavilyApiKey: p.getString(_kTavily) ?? state.tavilyApiKey,
+      enableWebSearch: p.getBool(_kWebSearch) ?? state.enableWebSearch,
     );
   }
 
@@ -116,6 +140,9 @@ class AppConfigNotifier extends StateNotifier<AppConfigState> {
     await p.setDouble(_kTtsRate, state.ttsRate);
     await p.setDouble(_kTtsPitch, state.ttsPitch);
     await p.setDouble(_kTtsVol, state.ttsVolume);
+    await p.setString(_kBackend, state.backend);
+    await p.setString(_kTavily, state.tavilyApiKey);
+    await p.setBool(_kWebSearch, state.enableWebSearch);
   }
 
   void updateApiSettings({
@@ -151,6 +178,24 @@ class AppConfigNotifier extends StateNotifier<AppConfigState> {
 
   void updateWorkOrder(String id) {
     state = state.copyWith(workOrderId: id);
+    _persist();
+  }
+
+  /// V57: cambia el backend de IA. 'auto' | 'cerebras'.
+  void updateBackend(String backend) {
+    state = state.copyWith(backend: backend);
+    _persist();
+  }
+
+  /// V57: guarda la API key de Tavily (búsqueda web).
+  void updateTavilyKey(String key) {
+    state = state.copyWith(tavilyApiKey: key);
+    _persist();
+  }
+
+  /// V57: interruptor global de la búsqueda web.
+  void toggleWebSearch(bool enabled) {
+    state = state.copyWith(enableWebSearch: enabled);
     _persist();
   }
 

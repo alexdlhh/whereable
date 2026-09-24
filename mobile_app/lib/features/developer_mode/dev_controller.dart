@@ -15,6 +15,7 @@ import '../connectivity/wifi_sync_service.dart';
 import '../background/background_service.dart';
 import '../voice_gate/voice_gatekeeper_service.dart';
 import '../voice_gate/models/voice_gate_models.dart';
+import '../voice_gate/continuous_listening_service.dart';
 import '../../core/config/app_config_provider.dart';
 
 class GlassesMicStats {
@@ -44,6 +45,8 @@ class DevModeState {
   final GlassesTelemetry? telemetry;
   final bool isRecordingVoice;
   final bool isCalibratingVoice;
+  /// V57: escucha continua activa (full-duplex + barge-in).
+  final bool isContinuousListening;
   final String lastError;
   final bool isBackgroundModeActive;
   final VoiceGateEvaluation? lastVoiceEvaluation;
@@ -74,6 +77,7 @@ class DevModeState {
     this.telemetry,
     this.isRecordingVoice = false,
     this.isCalibratingVoice = false,
+    this.isContinuousListening = false,
     this.lastError = '',
     this.isBackgroundModeActive = false,
     this.lastVoiceEvaluation,
@@ -102,6 +106,7 @@ class DevModeState {
     GlassesTelemetry? telemetry,
     bool? isRecordingVoice,
     bool? isCalibratingVoice,
+    bool? isContinuousListening,
     String? lastError,
     bool? isBackgroundModeActive,
     VoiceGateEvaluation? lastVoiceEvaluation,
@@ -129,6 +134,7 @@ class DevModeState {
       telemetry: telemetry ?? this.telemetry,
       isRecordingVoice: isRecordingVoice ?? this.isRecordingVoice,
       isCalibratingVoice: isCalibratingVoice ?? this.isCalibratingVoice,
+      isContinuousListening: isContinuousListening ?? this.isContinuousListening,
       lastError: lastError ?? this.lastError,
       isBackgroundModeActive: isBackgroundModeActive ?? this.isBackgroundModeActive,
       lastVoiceEvaluation: lastVoiceEvaluation ?? this.lastVoiceEvaluation,
@@ -156,6 +162,8 @@ class DevController extends StateNotifier<DevModeState> {
   final Ref ref;
   final AudioRecorder _recorder = AudioRecorder();
   Timer? _telemetryTimer;
+  StreamSubscription<String>? _phraseSub;
+  StreamSubscription<void>? _bargeInSub;
 
   Future<void> _checkInitialBackgroundState() async {
     final running = await BackgroundServiceManager.isServiceRunning();
@@ -746,6 +754,43 @@ class DevController extends StateNotifier<DevModeState> {
     }
   }
 
+  // --- V57: ESCUCHA CONTINUA (full-duplex + barge-in) ---
+
+  /// Alterna la escucha continua. Pide bloques de 100 ms a /mic_sample del XIAO,
+  /// detecta frases por VAD, las transcribe y las manda al pipeline IA.
+  /// Mientras el asistente habla, sigue escuchando y corta el TTS si oye al usuario.
+  Future<void> toggleContinuousListening() async {
+    final listening = ref.read(continuousListeningProvider);
+    if (state.isContinuousListening) {
+      await listening.stop();
+      state = state.copyWith(isContinuousListening: false);
+      log("🎧 Escucha continua: DETENIDA");
+      return;
+    }
+
+    final ip = _resolveIp();
+    if (ip == null) {
+      log("🎧 Escucha continua: sin IP de gafas (empareja primero).");
+      state = state.copyWith(lastError: 'Sin IP de gafas para escucha continua');
+      return;
+    }
+
+    // Suscribir frases -> pipeline IA.
+    _phraseSub ??= listening.phrases.listen((phrase) {
+      log("🎧 Frase continua: '$phrase'");
+      triggerAiQuery(phrase);
+    });
+    // Suscribir barge-in -> cortar TTS.
+    _bargeInSub ??= listening.bargeIn.listen((_) {
+      log("🎧 BARGE-IN: voz del usuario mientras habla el asistente -> cortando TTS");
+      listening.interruptPlayback();
+    });
+
+    await listening.start(ip);
+    state = state.copyWith(isContinuousListening: true, lastError: '');
+    log("🎧 Escucha continua: ACTIVA en $ip (full-duplex + barge-in)");
+  }
+
   Future<void> retryLast() async {
     if (state.history.isEmpty) return;
     await triggerAiQuery(state.history.first.userQuery);
@@ -790,6 +835,10 @@ class DevController extends StateNotifier<DevModeState> {
     }
 
     try {
+      // V57 FULL-DUPLEX: marcar que el asistente va a hablar para que el bucle
+      // de escucha continua pueda detectar barge-in y cortar el TTS.
+      final listening = ref.read(continuousListeningProvider);
+      listening.isAssistantSpeaking = true;
       final llmWatch = Stopwatch()..start();
       final result = await aiService.processMultimodalQuery(
         userPrompt: query,
@@ -798,6 +847,7 @@ class DevController extends StateNotifier<DevModeState> {
         useMock: state.isSimulatorMode,
       );
       llmWatch.stop();
+      listening.isAssistantSpeaking = false;
 
       final updatedHistory = List<AiInteractionResult>.from(state.history)..insert(0, result);
       state = state.copyWith(
